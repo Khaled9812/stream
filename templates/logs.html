@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Logs{% endblock %}
+{% block page_title %}Logs{% endblock %}
+
+{% block styles %}
+<style>
+    .date-filter {
+        background: #333;
+        padding: 1rem;
+        border-radius: 10px;
+        margin-bottom: 2rem;
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        max-width: 1200px;
+        margin: 0 auto 2rem;
+    }
+    #datePicker {
+        padding: 8px;
+        border-radius: 5px;
+        border: 1px solid #444;
+        background: #222;
+        color: white;
+    }
+    .log-day {
+        background: #333;
+        border-radius: 10px;
+        margin-bottom: 2rem;
+        max-width: 1200px;
+        margin: 0 auto;
+        overflow: hidden;
+    }
+    .log-date {
+        background: var(--primary-color);
+        padding: 1rem;
+        font-size: 1.1rem;
+    }
+    .log-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .log-table th,
+    .log-table td {
+        padding: 12px 15px;
+        border-bottom: 1px solid #444;
+    }
+    .log-table th {
+        background: #222;
+        font-weight: 500;
+    }
+    button {
+        background: var(--primary-color);
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background 0.3s ease;
+    }
+    button:hover {
+        background: #cc0000;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="date-filter">
+    <input type="date" id="datePicker" value="{{ selected_date }}">
+    <button onclick="filterLogs()">Show Logs</button>
+</div>
+
+{% if logs_by_date %}
+    {% for date, daily_logs in logs_by_date.items() %}
+    <div class="log-day">
+        <div class="log-date">{{ date }}</div>
+        <table class="log-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Client</th>
+                    <th>Event</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in daily_logs %}
+                <tr>
+                    <td>{{ log.time }}</td>
+                    <td>{{ log.client_name or "N/A" }}</td>
+                    <td>{{ log.event }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="log-day">
+        <div class="log-date">No logs found</div>
+    </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function filterLogs() {
+        const date = document.getElementById('datePicker').value;
+        window.location.href = `/logs?date=${date}`;
+    }
+</script>
+{% endblock %}

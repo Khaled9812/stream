@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Recordings</h2>
+    <div class="list-group">
+        {% for date in dates %}
+        <a href="{{ url_for('date_recordings', date=date) }}" 
+           class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+            {{ date }}
+            <span class="badge bg-primary rounded-pill">{{ recordings|length }}</span>
+        </a>
+        {% else %}
+        <div class="alert alert-info">No recordings available yet</div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

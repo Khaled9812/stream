@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Recordings for {{ date }}</h2>
+    <div class="row">
+        {% for recording in recordings %}
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    Camera: {{ recording.camera_id }}
+                </div>
+                <div class="card-body">
+                    <p class="card-text">
+                        <i class="fas fa-clock"></i> Start: {{ recording.start_time }}<br>
+                        <i class="fas fa-stopwatch"></i> End: {{ recording.end_time }}
+                    </p>
+                    <div class="list-group">
+                        {% for segment in recording.segments %}
+                        <a href="{{ segment }}" 
+                           class="list-group-item list-group-item-action"
+                           target="_blank">
+                            <i class="fas fa-film"></i> {{ segment.split('/')[-1] }}
+                        </a>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="alert alert-warning">No recordings found for this date</div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

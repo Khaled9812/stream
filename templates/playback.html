@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Playback for {{ camera_id }} on {{ date }}</h2>
+    <div class="mb-3">
+        <video id="playbackVideo" width="640" height="480" controls></video>
+    </div>
+    <div class="mb-3">
+        <input type="range" id="timeSlider" min="0" max="1439" step="1" value="0">
+        <span id="timeLabel">00:00</span>
+    </div>
+    <button id="playBtn" class="btn btn-primary">
+        <i class="fas fa-play"></i> Play
+    </button>
+    <button id="pauseBtn" class="btn btn-warning">
+        <i class="fas fa-pause"></i> Pause
+    </button>
+    <button id="liveBtn" class="btn btn-success">
+        <i class="fas fa-broadcast-tower"></i> Go Live
+    </button>
+</div>
+
+<script>
+  // 'segments' is a JSON object passed from the server mapping hours (0-23) to segment URLs.
+  const segments = {{ segments | tojson | safe }};
+  const videoEl = document.getElementById('playbackVideo');
+  const slider  = document.getElementById('timeSlider');
+  const timeLbl = document.getElementById('timeLabel');
+  const playBtn = document.getElementById('playBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const liveBtn = document.getElementById('liveBtn');
+
+  // The slider represents minutes since midnight (0 to 1439)
+  function formatTime(minuteOfDay) {
+    const hh = Math.floor(minuteOfDay / 60);
+    const mm = minuteOfDay % 60;
+    return String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+  }
+
+  function loadSegmentFor(minuteOfDay) {
+    // Determine which hour the current minute falls into.
+    const hour = Math.floor(minuteOfDay / 60);
+    if (!segments[hour]) {
+      console.warn("No segment for hour:", hour);
+      return;
+    }
+    const segmentUrl = segments[hour];
+    // If the segment isn't currently loaded, set it.
+    if (!videoEl.src.includes(segmentUrl)) {
+      videoEl.src = segmentUrl;
+      videoEl.load();
+    }
+    // Calculate the offset within the hour (in seconds)
+    const minuteInHour = minuteOfDay % 60;
+    const offsetSeconds = minuteInHour * 60;
+    videoEl.onloadedmetadata = function() {
+      videoEl.currentTime = offsetSeconds;
+    }
+  }
+
+  slider.addEventListener('input', () => {
+    const val = parseInt(slider.value, 10);
+    timeLbl.textContent = formatTime(val);
+    loadSegmentFor(val);
+  });
+
+  let playbackInterval = null;
+  playBtn.addEventListener('click', () => {
+    if (playbackInterval) return;
+    playbackInterval = setInterval(() => {
+      let current = parseInt(slider.value, 10);
+      if (current >= 1439) {
+        clearInterval(playbackInterval);
+        playbackInterval = null;
+        return;
+      }
+      current += 1;  // advance 1 minute per step
+      slider.value = current;
+      timeLbl.textContent = formatTime(current);
+      loadSegmentFor(current);
+    }, 1000); // Every 1 second in real time
+  });
+
+  pauseBtn.addEventListener('click', () => {
+    if (playbackInterval) {
+      clearInterval(playbackInterval);
+      playbackInterval = null;
+    }
+  });
+
+  liveBtn.addEventListener('click', () => {
+    window.location.href = "{{ url_for('get_date_recordings', date=date) }}";
+  });
+
+  // Initialize on page load.
+  loadSegmentFor(parseInt(slider.value, 10));
+  timeLbl.textContent = formatTime(parseInt(slider.value, 10));
+</script>
+{% endblock %}

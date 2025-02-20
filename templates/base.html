@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Camera Feed{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/fontawesome.min.css">
+    <link rel="stylesheet" href="/static/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #ff0000;
+            --background: #1a1a1a;
+        }
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--background);
+            color: white;
+        }
+        .navbar {
+            background-color: var(--background);
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            position: fixed;
+            top: 0;
+            width: 100%;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            gap: 2rem;
+        }
+        .logo-title-container {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .logo-container img {
+            max-height: 40px;
+            margin-bottom: 0.3rem;
+        }
+        .page-title {
+            font-size: 1.2rem;
+            margin: 0;
+            line-height: 1;
+        }
+        .nav-links-center {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+        }
+        .icons-row {
+            display: flex;
+            gap: 1.5rem;
+            align-items: center;
+        }
+        .nav-link {
+            color: white;
+            text-decoration: none;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            transition: background 0.3s ease;
+        }
+        .nav-link:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .content {
+            padding: 120px 20px 20px;
+        }
+    </style>
+    {% block styles %}{% endblock %}
+</head>
+<body>
+    <div class="navbar">
+        <div class="logo-title-container">
+            <div class="logo-container">
+                <img src="/static/logo.png" alt="Logo">
+            </div>
+            <h2 class="page-title">{% block page_title %}{% endblock %}</h2>
+        </div>
+        <div class="nav-links-center">
+            <div class="icons-row">
+                <a href="{{ url_for('index') }}" class="nav-link">
+                    <i class="fas fa-home"></i> home
+                </a>
+                <a href="{{ url_for('logs') }}" class="nav-link">
+                    <i class="fas fa-list"></i> Logs
+                </a>
+                <a href="{{ url_for('manage_cams') }}" class="nav-link">
+                    <i class="fas fa-edit"></i> Manage Cams
+                </a>
+                <a href="{{ url_for('add_client') }}" class="nav-link">
+                    <i class="fas fa-camera"></i> Add Client
+                </a>
+                <a href="{{ url_for('recordings') }}" class="nav-link">
+                    <i class="fas fa-video"></i> Recordings
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </div>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

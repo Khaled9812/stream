@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Cameras{% endblock %}
+{% block page_title %}Manage Cameras{% endblock %}
+
+{% block styles %}
+<style>
+    .cameras-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #333;
+        border-radius: 10px;
+        overflow: hidden;
+        margin: 0 auto;
+        max-width: 1200px;
+    }
+    .cameras-table th,
+    .cameras-table td {
+        padding: 12px 15px;
+        border-bottom: 1px solid #444;
+    }
+    .cameras-table th {
+        background: #222;
+        font-weight: 500;
+    }
+    .status-active { color: #4CAF50; }
+    .status-inactive { color: #f44336; }
+    .action-buttons {
+        display: flex;
+        gap: 0.5rem;
+    }
+    .btn {
+        padding: 6px 12px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: opacity 0.3s ease;
+    }
+    .btn-remove {
+        background: #f44336;
+        color: white;
+    }
+    .btn-reconnect {
+        background: #4CAF50;
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<table class="cameras-table">
+    <thead>
+        <tr>
+            <th>Client Name</th>
+            <th>IP</th>
+            <th>TCP Port</th>
+            <th>UDP Port</th>
+            <th>Last Connected</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in all_clients %}
+        <tr>
+            <td>{{ row[3] }}</td>
+            <td>{{ row[1] }}</td>
+            <td>{{ row[2] }}</td>
+            <td>{{ row[4] }}</td>
+            <td>{{ row[5] if row[5] else "N/A" }}</td>
+            <td>
+                {% if row[6] == "active" %}
+                    <span class="status-active">● Active</span>
+                {% else %}
+                    <span class="status-inactive">● Inactive</span>
+                {% endif %}
+            </td>
+            <td>
+                <div class="action-buttons">
+                    <form method="POST" action="{{ url_for('remove_cam', client_db_id=row[0]) }}">
+                        <button class="btn btn-remove" type="submit">Remove</button>
+                    </form>
+                    {% if row[6] != "active" %}
+                    <form method="POST" action="{{ url_for('reconnect_cam', client_db_id=row[0]) }}">
+                        <button class="btn btn-reconnect" type="submit">Reconnect</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
