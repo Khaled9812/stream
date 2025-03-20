@@ -4,107 +4,108 @@ import struct
 import time
 import numpy as np
 
-# Which camera do we open locally?
-CAMERA_INDEX = 0
 
-# Our desired FPS as a guideline (the camera will supply frames at its own rate)
-DESIRED_FPS = 30
-# FRAME_INTERVAL is computed for reference; we remove extra waiting to send frames instantly.
-FRAME_INTERVAL = 1.0 / DESIRED_FPS
+# this class takes 
+class VideoFrameSender:
+    def __init__(self, targets, desired_fps=30):
+        """
+        Initializes the sender with target addresses and desired FPS.
+        :param targets: A list of (ip, port) tuples to which frames will be sent.
+        :param desired_fps: The desired frames-per-second rate for sending.
+        """
+        self.targets = targets
+        self.desired_fps = desired_fps
+        self.frame_interval = 1.0 / desired_fps
+        self.sockets = {}
 
-# List of target hosts to send frames to.
-# Each entry is a tuple (ip, port)
-TARGETS = [
-    ("127.0.0.1", 6000),  # Example: send to another app on the same machine on port 6000
-    # Add more hosts if needed.
-]
-
-def reconnect_target(target):
-    ip, port = target
-    try:
-        print(f"Attempting to reconnect to {ip}:{port}...")
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect((ip, port))
-        print(f"Reconnected to {ip}:{port}")
-        return s
-    except Exception as e:
-        print(f"Reconnect failed for {ip}:{port}: {e}")
-        return None
-
-def main():
-    cap = cv2.VideoCapture(CAMERA_INDEX)
-    cap.set(cv2.CAP_PROP_FPS, DESIRED_FPS)
-    if not cap.isOpened():
-        print("Error: Could not open camera.")
-        return
-
-    # Create a dictionary for sockets keyed by target tuple.
-    sockets = {}
-    for target in TARGETS:
+    def _reconnect_target(self, target):
         ip, port = target
-        print(f"Connecting to {ip}:{port}...")
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect((ip, port))
-            sockets[target] = s
             print(f"Connected to {ip}:{port}")
+            return s
         except Exception as e:
-            print(f"Failed to connect to {ip}:{port}: {e}")
-            sockets[target] = None
+            print(f"Connection failed to {ip}:{port} -> {e}")
+            return None
 
-    try:
-        while True:
-            start_time = time.time()
-            ret, frame = cap.read()
-            if not ret:
-                print("Error reading frame from camera.")
-                continue
+    def send_frame(self, frame):
+        """
+        Sends a provided frame to all targets.
+        The frame is expected to be a NumPy array of shape (height, width, channels).
+        It prepends an 8-byte header containing the width and height.
+        """
+        # Get frame dimensions
+        height, width, channels = frame.shape
 
-            # Remove encoding: convert the frame directly to raw bytes.
-            frame_bytes = frame.tobytes()
-            frame_size = len(frame_bytes)
-            # Prepare data: 4-byte size header (big-endian) followed by the raw frame data.
-            data_to_send = struct.pack("!I", frame_size) + frame_bytes
+        # Create an 8-byte header: 4 bytes for width, 4 bytes for height
+        header = struct.pack("!II", width, height)
+        frame_bytes = frame.tobytes()
+        data = header + frame_bytes
 
-            # Send to each target.
-            for target in TARGETS:
-                if sockets.get(target) is None:
-                    sockets[target] = reconnect_target(target)
-                s = sockets.get(target)
-                if s is None:
-                    continue  # skip if not connected
+        start_time = time.time()
+
+        # Send the frame data to each target
+        for target in self.targets:
+            s = self.sockets.get(target)
+            if s is None:
+                s = self._reconnect_target(target)
+                self.sockets[target] = s
+            if s:
                 try:
-                    s.sendall(data_to_send)
+                    s.sendall(data)
                 except Exception as e:
-                    print(f"Error sending to {s.getpeername()}: {e}")
-                    try:
-                        s.close()
-                    except Exception:
-                        pass
-                    sockets[target] = None  # Mark as disconnected
+                    print(f"Send error to {target}: {e}")
+                    s.close()
+                    self.sockets[target] = None
 
-            # Let the loop run as soon as processing is complete.
-            elapsed = time.time() - start_time
-            to_wait = FRAME_INTERVAL - elapsed
-            if to_wait > 0:
-                time.sleep(to_wait)
+        # Control sending rate based on desired FPS
+        elapsed = time.time() - start_time
+        if elapsed < self.frame_interval:
+            time.sleep(self.frame_interval - elapsed)
 
-            # (Optional) Display the camera feed locally.
-            cv2.imshow('Client Camera Feed', frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                print("User requested exit.")
-                break
-
-    except KeyboardInterrupt:
-        print("User interrupted. Exiting.")
-
-    finally:
-        cap.release()
-        cv2.destroyAllWindows()
-        for s in sockets.values():
+    def stop(self):
+        """
+        Closes all active target sockets.
+        """
+        for s in self.sockets.values():
             if s:
                 s.close()
-        print("Cleanup done.")
+        print("Frame sender stopped")
 
 if __name__ == "__main__":
-    main()
+    # Example usage: 
+    # This sender sends frames to targets without capturing them directly.
+    # For demonstration, we capture frames via cv2 (from a webcam or video file) 
+    # and pass them to the sender.
+    
+    TARGETS = [("127.0.0.1", 6000)]
+    sender = VideoFrameSender(TARGETS, desired_fps=30)
+    
+    # Use cv2 to capture frames (change 0 to a video file path if needed)
+    cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    if not cap.isOpened():
+        print("Failed to open video source")
+        exit(1)
+    
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            # Send the frame using the sender instance
+            sender.send_frame(frame)
+            
+            # Optional: display the source frame locally
+            cv2.imshow("Source Frame", frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+    except KeyboardInterrupt:
+        print("Interrupted by user")
+    finally:
+        cap.release()
+        sender.stop()
+        cv2.destroyAllWindows()
