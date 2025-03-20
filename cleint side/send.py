@@ -2,189 +2,100 @@ import cv2
 import socket
 import struct
 import time
-import av  # PyAV
+import av
 import numpy as np
 
-# The port where we listen for incoming frames (from the capture app)
-LISTEN_PORT = 6000
+def receive_frames_from_network(port):
+    server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server_sock.bind(('0.0.0.0', port))
+    server_sock.listen(1)
+    print(f"Listening on port {port}...")
 
-DESIRED_FPS = 30
-FRAME_INTERVAL = 1.0 / DESIRED_FPS
-IDLE_TIMEOUT = 60  # 1 minute with no data => close connection & re-listen
+    conn, addr = server_sock.accept()
+    print(f"Connected by {addr}")
 
-# Define the expected frame dimensions (must match the capture app)
-WIDTH = 640
-HEIGHT = 480
-CHANNELS = 3
-EXPECTED_SIZE = WIDTH * HEIGHT * CHANNELS
+    try:
+        while True:
+            # Read the 8-byte header: 4 bytes for width, 4 bytes for height
+            header = conn.recv(8)
+            if len(header) != 8:
+                print("Incomplete header. Closing connection.")
+                break
 
-def receive_frames_from_network(listen_port):
-    """
-    A generator function that repeatedly listens on TCP port `listen_port` for a connection
-    from the capture app. Once connected, it receives frames in the following format:
-      - 4-byte frame size (big-endian integer)
-      - that many bytes of raw frame data (BGR format, row-major)
-    It then converts the raw bytes into a NumPy array with shape (HEIGHT, WIDTH, CHANNELS)
-    and yields the resulting frame.
-    If no data is received for IDLE_TIMEOUT seconds, or the connection ends, it closes
-    the connection and re-listens.
-    """
-    while True:
-        # Create a fresh listening socket for each cycle.
-        server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server_sock.bind(('0.0.0.0', listen_port))
-        server_sock.listen(1)
-        print(f"[Receiver] Waiting for raw frame connection on port {listen_port}...")
-        
-        conn, addr = server_sock.accept()
-        print(f"[Receiver] Connected by {addr}")
-        
-        # Set a 1-second timeout on socket reads.
-        conn.settimeout(1.0)
-        last_received = time.time()
+            width, height = struct.unpack("!II", header)
+            frame_size = width * height * 3  # Assuming 3 channels (BGR)
+            # Debug: print the received resolution
+            # print(f"Received header: width={width}, height={height}, frame_size={frame_size}")
 
-        try:
-            while True:
-                if (time.time() - last_received) > IDLE_TIMEOUT:
-                    print("[Receiver] No data for 60s. Closing connection & re-listening.")
+            # Read the frame data based on computed frame_size
+            frame_data = b""
+            while len(frame_data) < frame_size:
+                chunk = conn.recv(frame_size - len(frame_data))
+                if not chunk:
                     break
+                frame_data += chunk
 
-                # Read 4-byte size header.
-                try:
-                    raw_size = conn.recv(4)
-                except socket.timeout:
-                    continue
+            if len(frame_data) != frame_size:
+                print("Incomplete frame data. Closing connection.")
+                break
 
-                if not raw_size or len(raw_size) < 4:
-                    print("[Receiver] Incomplete size header. Closing connection.")
-                    break
-
-                frame_size = struct.unpack("!I", raw_size)[0]
-                if frame_size != EXPECTED_SIZE:
-                    print(f"[Receiver] Warning: Expected frame size {EXPECTED_SIZE}, got {frame_size}. Skipping frame.")
-                    # Skip reading the frame data.
-                    conn.recv(frame_size)
-                    continue
-
-                # Read the raw frame data.
-                frame_data = b""
-                remaining = frame_size
-                while remaining > 0:
-                    try:
-                        chunk = conn.recv(remaining)
-                    except socket.timeout:
-                        if (time.time() - last_received) > IDLE_TIMEOUT:
-                            print("[Receiver] Idle timeout while reading frame. Closing connection.")
-                            break
-                        continue
-                    if not chunk:
-                        print("[Receiver] Connection closed while reading frame data.")
-                        break
-                    frame_data += chunk
-                    remaining -= len(chunk)
-                    last_received = time.time()
-
-                if len(frame_data) < frame_size:
-                    print("[Receiver] Incomplete frame data. Closing connection.")
-                    break
-
-                # Convert raw bytes to NumPy array and reshape.
-                try:
-                    frame_array = np.frombuffer(frame_data, dtype=np.uint8)
-                    frame = frame_array.reshape((HEIGHT, WIDTH, CHANNELS))
-                except Exception as e:
-                    print(f"[Receiver] Error reshaping frame: {e}")
-                    continue
-
+            try:
+                # Reshape the frame using the received width and height
+                frame = np.frombuffer(frame_data, dtype=np.uint8).reshape((height, width, 3))
                 yield frame
+            except Exception as e:
+                print(f"Frame reshape error: {e}")
+    finally:
+        conn.close()
+        server_sock.close()
 
-        finally:
-            conn.close()
-            server_sock.close()
-            print("[Receiver] Socket closed. Re-listening for a new connection.")
-
-def encode_and_send_frames(frame_generator, server_ip, server_udp_port):
-    """
-    Processes frames from the generator by encoding them as H.264 via PyAV
-    and sends each encoded packet via UDP to the specified server.
-    """
-    # Get the first frame from the generator.
-    first_frame = next(frame_generator, None)
-    if first_frame is None:
-        print("[Sender] No frames received. Exiting.")
+def encode_and_send_frames(frame_gen, udp_ip, udp_port):
+    # Get the first frame to determine dimensions
+    try:
+        first_frame = next(frame_gen)
+    except StopIteration:
+        print("No frames received")
         return
 
-    height, width, channels = first_frame.shape
-    print(f"[Sender] First frame dimensions: {width}x{height} (channels: {channels})")
+    height, width, _ = first_frame.shape
+    print(f"Detected frame dimensions: {width}x{height}")
 
-    # Initialize PyAV H.264 encoder.
-    codec = av.codec.CodecContext.create('h264', 'w')
-    codec.width = width
-    codec.height = height
-    codec.pix_fmt = 'yuv420p'
-    codec.options = {'preset': 'ultrafast', 'tune': 'zerolatency'}
+    # Initialize PyAV encoder with the detected dimensions
+    container = av.open('stream.h264', mode='w', format='h264')
+    stream = container.add_stream('h264', rate=30)
+    stream.width = width
+    stream.height = height
+    stream.pix_fmt = 'yuv420p'
+    stream.options = {'preset': 'ultrafast', 'tune': 'zerolatency'}
 
-    # Create a UDP socket for sending the encoded packets.
-    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    
+    udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
     try:
-        frames_to_process = [first_frame]
+        # Process the first frame
+        av_frame = av.VideoFrame.from_ndarray(first_frame, format='bgr24')
+        for packet in stream.encode(av_frame):
+            udp_sock.sendto(bytes(packet), (udp_ip, udp_port))
 
-        while True:
-            if not frames_to_process:
-                raw_data = next(frame_generator, None)
-                if raw_data is None:
-                    print("[Sender] No more frames from generator. Exiting loop.")
-                    break
-                # raw_data is a raw frame; no decoding here is needed because our generator yields frames.
-                f = raw_data  # already a NumPy array
-                frames_to_process.append(f)
+        # Process subsequent frames
+        for frame in frame_gen:
+            av_frame = av.VideoFrame.from_ndarray(frame, format='bgr24')
+            for packet in stream.encode(av_frame):
+                udp_sock.sendto(bytes(packet), (udp_ip, udp_port))
 
-            start_time = time.time()
-            frame = frames_to_process.pop(0)
-
-            # Convert from BGR to RGB for PyAV.
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            av_frame = av.VideoFrame.from_ndarray(frame_rgb, format='rgb24')
-            av_frame = av_frame.reformat(width, height, format='yuv420p')
-
-            # Encode the frame.
-            try:
-                for packet in codec.encode(av_frame):
-                    data = bytes(packet)
-                    udp_socket.sendto(data, (server_ip, server_udp_port))
-            except Exception as e:
-                print(f"[Sender] Error during encoding/sending: {e}")
-                break
-
-            elapsed_time = time.time() - start_time
-            time_to_wait = max(0, FRAME_INTERVAL - elapsed_time)
-            time.sleep(time_to_wait)
-
-            # (Optional) Display the frame locally.
-            cv2.imshow('Processed Frames (2nd App)', frame)
+            cv2.imshow('Received', frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
-                print("[Sender] User requested exit from second app.")
                 break
 
-        # Flush remaining packets.
-        for packet in codec.encode(None):
-            data = bytes(packet)
-            udp_socket.sendto(data, (server_ip, server_udp_port))
-
-    except KeyboardInterrupt:
-        print("[Sender] User interrupted. Exiting.")
+        # Flush the encoder
+        for packet in stream.encode(None):
+            udp_sock.sendto(bytes(packet), (udp_ip, udp_port))
+            
     finally:
-        udp_socket.close()
+        udp_sock.close()
+        container.close()
         cv2.destroyAllWindows()
 
-def main():
-    # Receive raw frames (which are raw, not JPEG, because the capture app is sending raw data)
-    frame_gen = receive_frames_from_network(LISTEN_PORT)
-    SERVER_IP = "127.0.0.1"
-    SERVER_UDP_PORT = 5002
-    encode_and_send_frames(frame_gen, SERVER_IP, SERVER_UDP_PORT)
-
 if __name__ == "__main__":
-    main()
+    gen = receive_frames_from_network(6000)
+    encode_and_send_frames(gen, "127.0.0.1", 5002)
