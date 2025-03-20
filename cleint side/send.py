@@ -98,4 +98,5 @@ def encode_and_send_frames(frame_gen, udp_ip, udp_port):
 
 if __name__ == "__main__":
     gen = receive_frames_from_network(6000)
-    encode_and_send_frames(gen, "127.0.0.1", 5002)
+    #provide the server ip and port and then in the web app when adding a new client write the udp port that was writen here
+    encode_and_send_frames(gen, "127.0.0.1", 5002) 
