@@ -5,7 +5,8 @@ This project consists of three main components that work together to capture, pr
 ## Components Overview
 
 ## 1. `capture.py`
-- Captures video frames from a camera using OpenCV.
+- Captures video frames from a camera using OpenCV providing videoframecapture class with dummy frames.
+### VideoFrameSender class
 - Packages each frame with an 8‑byte header (4 bytes for width and 4 bytes for height) followed by the raw frame data.
 - Establishes a TCP connection with the receiver (i.e. `send.py`) and continuously transmits these raw frames at the specified frame rate.
 - Responsible solely for capturing and sending raw frames without any encoding.
