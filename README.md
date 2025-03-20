@@ -4,15 +4,18 @@ This project consists of three main components that work together to capture, pr
 
 ## Components Overview
 
-### 1. `capture.py`
-- Captures video footage from a camera.
-- Forwards raw frames to `send.py` for further processing.
-- Responsible only for capturing and transmitting frames.
+## 1. `capture.py`
+- Captures video frames from a camera using OpenCV.
+- Packages each frame with an 8‑byte header (4 bytes for width and 4 bytes for height) followed by the raw frame data.
+- Establishes a TCP connection with the receiver (i.e. `send.py`) and continuously transmits these raw frames at the specified frame rate.
+- Responsible solely for capturing and sending raw frames without any encoding.
 
-### 2. `send.py`
-- Receives raw frames from `capture.py`.
-- Encodes frames using H.264 compression.
-- Sends the encoded frames to `server.py` when a connection is available.
+## 2. `send.py`
+- Listens on a TCP port to receive raw frames transmitted from `capture.py`.
+- Reads the 8‑byte header to determine the frame's resolution and reconstructs the frame data.
+- Encodes the received frames using H.264 compression via PyAV.
+- Transmits the H.264 encoded packets via UDP to `server.py` when a connection is available.
+- Optionally displays the received frames locally for monitoring.
 
 ### 3. `server.py`
 - Receives and processes video streams from `send.py`.
